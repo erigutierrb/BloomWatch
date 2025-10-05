@@ -1,434 +1,538 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Flowering and Cultivation Simulator</title>
-    <!-- Carga de Tailwind CSS CDN para un estilo moderno y responsivo -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="mapdata.js"></script>
-    <script src="countrymap.js"></script>
-
-    <!-- Configuración de fuente Inter y estilos específicos -->
     <style>
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f0f4f8;
         }
-
         .department-card {
             transition: transform 0.3s, box-shadow 0.3s;
             cursor: pointer;
         }
-
         .department-card:hover {
             transform: translateY(-4px);
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
-
-        /* Estilos del mapa SVG (Croquis) */
-        .map-path {
-            stroke: #ffffff;
-            stroke-width: 1px;
-            transition: fill 0.3s, opacity 0.1s;
-            cursor: pointer;
-        }
-
-        .map-path:hover {
-            opacity: 0.85;
-            stroke-width: 3px;
-            /* Efecto de resaltado al pasar el mouse */
-        }
-
         #map-tooltip {
             pointer-events: none;
             z-index: 1000;
         }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #10b981;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
-
-<body onload="initializeApp()">
-
+<body>
     <div id="app" class="min-h-screen p-4 sm:p-8">
         <header class="text-center mb-8">
             <h1 class="text-4xl font-extrabold text-green-800 mb-2">Flowering and Cultivation Simulator</h1>
             <p class="text-xl text-gray-600">Flowering Validation for Coffee and Plantain</p>
             <p class="mt-4 text-sm text-gray-500">
-                *Simulated Data. Flowering > 75% = Optimal for Planting/HarvestS.
+                *Real Data from ML Model. Flowering > 75% = Optimal for Planting/Harvest.
             </p>
         </header>
 
-        <!-- Tooltip para el mapa (se controla con JS) -->
         <div id="map-tooltip" class="fixed hidden bg-gray-900 text-white p-3 rounded-lg shadow-xl text-sm max-w-xs">
             <h4 id="tooltip-dept-name" class="font-bold mb-1"></h4>
             <div id="tooltip-content"></div>
         </div>
 
-        <!-- Controles de Interacción y Simulación Estacional -->
+        <div id="loading-indicator" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white p-6 rounded-lg shadow-xl text-center">
+                <div class="loading-spinner mx-auto mb-4"></div>
+                <p class="text-gray-700 font-semibold">Loading data...</p>
+            </div>
+        </div>
+
         <div class="max-w-6xl mx-auto bg-white p-6 rounded-xl shadow-lg mb-8">
             <h2 class="text-2xl font-semibold text-gray-800 mb-4">Simulation and Query</h2>
-            <div class="flex flex-col md:flex-row gap-4 items-center">
-
-                <!-- Selector de Fecha/Estación -->
-                <div class="w-full md:w-1/2">
-                    <label for="simulation-date" class="block text-sm font-medium text-gray-700 mb-1">Date of
-                        simulation:</label>
-                    <input type="date" id="simulation-date" onchange="runSimulation()"
-                        class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-700 bg-gray-50 h-11">
+            <div class="flex flex-col gap-4">
+                <div class="w-full">
+                    <label for="simulation-date" class="block text-sm font-medium text-gray-700 mb-1">Date of simulation:</label>
+                    <input type="date" id="simulation-date" onchange="loadDataForDate()"
+                        class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-700 bg-gray-50">
+                    <p id="date-info" class="text-xs text-gray-500 mt-1"></p>
                 </div>
-
-                <!-- Selector de Departamento (Original) -->
-                <div class="w-full md:w-1/2 flex gap-4 items-center self-end">
+                <div class="w-full flex flex-col sm:flex-row gap-3">
                     <select id="department-select"
                         class="flex-grow p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-700 bg-gray-50">
                         <option value="" disabled selected>Select a Department</option>
                     </select>
                     <button onclick="displaySelectedDepartment()"
-                        class="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition duration-150 shadow-md">
+                        class="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition duration-150 shadow-md whitespace-nowrap">
                         View Prediction
                     </button>
                 </div>
             </div>
-
-            <!-- Resultado de la Consulta -->
             <div id="consultation-result" class="mt-6 p-4 border border-blue-200 bg-blue-50 rounded-lg hidden">
                 <p class="font-semibold text-blue-700">Query Result:</p>
                 <div id="result-content" class="text-sm mt-2 text-blue-800"></div>
             </div>
         </div>
 
-        <!-- Mapeo Interactivo Croquis SVG -->
         <main class="max-w-6xl mx-auto mb-10">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Interactive Flowering Sketch</h2>
-            <div id="map"></div>
-    </div>
-
-    <!-- Leyenda del Mapa -->
-    <div class="mt-4 flex justify-center space-x-6 text-sm">
-        <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-green-700 mr-2"></span>Optimal Total (>90)
-        </div>
-        <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-green-500 mr-2"></span>Favorable (>75)</div>
-        <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-yellow-500 mr-2"></span>Moderate (60-75)
-        </div>
-        <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-red-500 mr-2"></span>Low (<60)
-        </div>
-        </div>
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Interactive Flowering Map</h2>
+            <div id="map" class="bg-white p-6 rounded-xl shadow-lg" style="min-height: 500px;"></div>
+            <div class="mt-4 flex justify-center space-x-6 text-sm">
+                <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-green-700 mr-2"></span>Optimal Total (>90)</div>
+                <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-green-500 mr-2"></span>Favorable (>75)</div>
+                <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-yellow-500 mr-2"></span>Moderate (60-75)</div>
+                <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-red-500 mr-2"></span>Low (<60)</div>
+            </div>
         </main>
 
-        <!-- Tarjetas de Detalle de Departamentos -->
         <div class="max-w-6xl mx-auto">
             <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Detailed Department Report</h2>
-
-            <div id="department-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- Las tarjetas se insertarán y actualizarán aquí por JavaScript -->
-            </div>
-            </main>
+            <div id="department-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
         </div>
+    </div>
 
-        <script type="text/javascript">
-            // --- DATOS BASE SIMULADOS ---
-            // Se añade 'base_...' para aplicar factores de simulación estacional
-            let dataStore = [
-                { id: 'path-Caldas', name: 'Caldas', base_coffee_status: 92, base_plantain_status: 65, focus: 'Café', description: 'Main coffee-growing region. The climate and altitude are optimal for coffee flowering.' },
-                { id: 'path-Antioquia', name: 'Antioquia', base_coffee_status: 78, base_plantain_status: 90, focus: 'Plátano', description: 'Great producer of plantains and plantains. The simulation indicates an advanced and favorable flowering stage.' },
-                { id: 'path-LaGuajira', name: 'La Guajira', base_coffee_status: 45, base_plantain_status: 88, focus: 'Plátano', description: 'Region suitable for plantain cultivation, especially in irrigated areas.' },
-                { id: 'path-Cundinamarca', name: 'Cundinamarca', base_coffee_status: 85, base_plantain_status: 72, focus: 'General', description: 'Favorable conditions for both, but monitoring is recommended for the plantain.' },
-                { id: 'path-Choco', name: 'Chocó', base_coffee_status: 55, base_plantain_status: 50, focus: 'General', description: 'High rainfall can hinder flowering. Assess drainage and light conditions.' },
-                { id: 'path-ValleDelCauca', name: 'Valle del Cauca', base_coffee_status: 80, base_plantain_status: 83, focus: 'General', description: 'Region with high potential and optimal conditions for both crops in different areas.' },
-                { id: 'path-Santander', name: 'Santander', base_coffee_status: 88, base_plantain_status: 60, focus: 'Café', description: 'Strong coffee potential. The plantain flowering is in the early stage.' },
-            ];
-            // Se usa 75% como umbral para 'Óptimo'
-            const OPTIMAL_THRESHOLD = 75;
+    <script type="text/javascript">
+        let jsonData = {};
+        let currentDataStore = [];
+        let availableDates = [];
+        let simplemapsReady = false;
+        const OPTIMAL_THRESHOLD = 75;
 
-            // --- FUNCIONES DE ESTADO Y COLOR ---
-
-            function getStatusColor(status) {
-                if (status >= 90) return 'bg-green-700';
-                if (status >= OPTIMAL_THRESHOLD) return 'bg-green-500';
-                if (status >= 60) return 'bg-yellow-500';
-                return 'bg-red-500';
-            }
-
-            function getMapFillColor(coffeeStatus, plantainStatus) {
-                // El color del mapa se basa en el promedio de floración de los dos cultivos.
-                const avg = (coffeeStatus + plantainStatus) / 2;
-                if (avg >= 90) return '#065f46'; // green-700
-                if (avg >= OPTIMAL_THRESHOLD) return '#10b981'; // green-500
-                if (avg >= 60) return '#f59e0b'; // yellow-500
-                return '#ef4444'; // red-500
-            }
-
-            function getSuitabilityMessage(status) {
-                if (status >= OPTIMAL_THRESHOLD) {
-                    return '<span class="text-green-700 font-semibold">Optimal</span> (Possible Collection/Planting)';
-                } else if (status >= 60) {
-                    return '<span class="text-yellow-700 font-semibold">Moderate</span> (Monitoring Required)';
+        async function loadJSONData() {
+            showLoading(true);
+            try {
+                console.log('🔄 Attempting to load dataStore.json...');
+                const response = await fetch('dataStore.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const text = await response.text();
+                console.log('📄 File loaded, size:', text.length, 'bytes');
+                jsonData = JSON.parse(text);
+                availableDates = Object.keys(jsonData).sort();
+                if (availableDates.length === 0) {
+                    throw new Error('JSON file is empty or has no valid dates');
+                }
+                console.log(`✅ Successfully loaded data for ${availableDates.length} dates`);
+                console.log(`📅 Date range: ${availableDates[0]} to ${availableDates[availableDates.length - 1]}`);
+                const sampleDate = availableDates[0];
+                const sampleDepts = jsonData[sampleDate];
+                console.log(`📊 Sample data for ${sampleDate}:`, sampleDepts.length, 'departments');
+                if (sampleDepts.length > 0) {
+                    console.log('First department example:', sampleDepts[0]);
+                }
+                return true;
+            } catch (error) {
+                console.error('❌ Error loading JSON file:', error);
+                if (window.location.protocol === 'file:') {
+                    alert(`⚠️ Cannot load JSON from file:// protocol\n\nYou need to run a local server. Options:\n\n1. Python 3: python -m http.server 8000\n2. Python 2: python -m SimpleHTTPServer 8000\n3. Node.js: npx http-server\n4. VS Code: Install "Live Server" extension\n\nThen open: http://localhost:8000`);
                 } else {
-                    return '<span class="text-red-700 font-semibold">Low</span> (Unfavorable Conditions)';
+                    alert(`Error loading data:\n\n${error.message}\n\nPlease ensure:\n1. dataStore.json exists in the same folder\n2. The file is valid JSON\n3. The file is not empty`);
+                }
+                useSimulatedData();
+                return false;
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function loadJSONFromString() {
+            const jsonString = ``;
+            if (jsonString.trim() === '') return false;
+            try {
+                jsonData = JSON.parse(jsonString);
+                availableDates = Object.keys(jsonData).sort();
+                console.log(`✅ Loaded data from string for ${availableDates.length} dates`);
+                return true;
+            } catch (error) {
+                console.error('❌ Error parsing JSON string:', error);
+                return false;
+            }
+        }
+
+        function useSimulatedData() {
+            console.error('❌ Cannot load JSON file. Please ensure dataStore.json is in the same directory.');
+            alert('Error: Cannot load dataStore.json file.\n\nPlease make sure the file is in the same directory as this HTML file.');
+        }
+
+        function showLoading(show) {
+            const loader = document.getElementById('loading-indicator');
+            if (show) {
+                loader.classList.remove('hidden');
+            } else {
+                loader.classList.add('hidden');
+            }
+        }
+
+        function loadDataForDate() {
+            const dateInput = document.getElementById('simulation-date');
+            const selectedDate = dateInput.value;
+            const dateInfo = document.getElementById('date-info');
+            if (!selectedDate) return;
+
+            console.log('🔍 Looking for date:', selectedDate);
+            if (jsonData[selectedDate]) {
+                currentDataStore = normalizeDataStore(jsonData[selectedDate]);
+                dateInfo.textContent = `✅ Data available for ${selectedDate} (${currentDataStore.length} departments)`;
+                dateInfo.classList.remove('text-red-500', 'text-amber-600');
+                dateInfo.classList.add('text-green-600');
+            } else {
+                const nearestDate = findNearestDate(selectedDate);
+                if (nearestDate) {
+                    currentDataStore = normalizeDataStore(jsonData[nearestDate]);
+                    dateInfo.textContent = `⚠️ Using nearest available date: ${nearestDate} (${currentDataStore.length} departments)`;
+                    dateInfo.classList.remove('text-green-600', 'text-red-500');
+                    dateInfo.classList.add('text-amber-600');
+                    dateInput.value = nearestDate;
+                } else {
+                    currentDataStore = [];
+                    dateInfo.textContent = `❌ No data available`;
+                    dateInfo.classList.remove('text-green-600', 'text-amber-600');
+                    dateInfo.classList.add('text-red-500');
                 }
             }
+            updateDepartmentSelector();
+            renderAllElements(currentDataStore);
+        }
 
-            // --- LÓGICA DE SIMULACIÓN ESTACIONAL ---
+        function normalizeDataStore(dataArray) {
+            return dataArray.map(dept => ({
+                ...dept,
+                coffee_status: Math.round(dept.coffee_status * 100) / 100,
+                plantain_status: Math.round(dept.plantain_status * 100) / 100
+            }));
+        }
 
-            function runSimulation() {
-                const dateInput = document.getElementById('simulation-date');
-                const date = new Date(dateInput.value + 'T00:00:00');
-                const month = date.getMonth();
-
-                if (isNaN(date)) return;
-
-                let coffeeFactor = 1.0;
-                let plantainFactor = 1.0;
-
-                // Focos de floración simulados (Meses 0=Enero, 11=Diciembre)
-                // Café: Abr-May (3-4) y Sep-Nov (8-10) son picos
-                if (month >= 3 && month <= 4) { coffeeFactor = 1.15; }
-                else if (month >= 8 && month <= 10) { coffeeFactor = 1.1; }
-                else if (month === 0 || month === 1 || month === 11) { coffeeFactor = 0.85; }
-
-                // Plátano: Menos estacional, pero mejor en Jun-Ago (5-7)
-                if (month >= 5 && month <= 7) { plantainFactor = 1.1; }
-                else if (month === 10 || month === 11 || month === 0) { plantainFactor = 0.9; }
-
-                // Aplicar factores y actualizar dataStore
-                dataStore = dataStore.map(dept => {
-                    const randomOffset = Math.random() * 5 - 2.5;
-
-                    const newCoffeeStatus = Math.min(100, Math.max(20, Math.round(dept.base_coffee_status * coffeeFactor + randomOffset)));
-                    const newPlantainStatus = Math.min(100, Math.max(20, Math.round(dept.base_plantain_status * plantainFactor + randomOffset)));
-
-                    // Actualizar los datos del departamento
-                    dept.coffee_status = newCoffeeStatus;
-                    dept.plantain_status = newPlantainStatus;
-
-                    return dept;
-                });
-
-                // Re-renderizar la UI (tarjetas) y el croquis
-                renderAllElements(dataStore);
-            }
-
-
-            // --- FUNCIONES DE RENDERIZADO DE UI Y MAPA ---
-
-            function renderDepartmentCard(department) {
-                // Estilos para destacar las regiones clave
-                let highlightClass = '';
-                if (department.name === 'Caldas') {
-                    highlightClass = 'border-4 border-amber-500 shadow-xl ring-4 ring-amber-200'; // Destaca para Café
-                } else if (department.name === 'Antioquia' || department.name === 'La Guajira') {
-                    highlightClass = 'border-4 border-sky-500 shadow-xl ring-4 ring-sky-200'; // Destaca para Plátano
+        function findNearestDate(targetDate) {
+            if (availableDates.length === 0) return null;
+            const target = new Date(targetDate + 'T00:00:00');
+            let nearest = availableDates[0];
+            let minDiff = Math.abs(new Date(availableDates[0] + 'T00:00:00') - target);
+            for (const date of availableDates) {
+                const diff = Math.abs(new Date(date + 'T00:00:00') - target);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    nearest = date;
                 }
-
-                // Barra de progreso y mensajes
-                const coffeeColor = getStatusColor(department.coffee_status);
-                const coffeeSuitability = getSuitabilityMessage(department.coffee_status);
-                const plantainColor = getStatusColor(department.plantain_status);
-                const plantainSuitability = getSuitabilityMessage(department.plantain_status);
-
-                return `
-                <div class="department-card bg-white p-6 rounded-xl shadow-lg ${highlightClass} flex flex-col justify-between" onclick="showDepartmentDetail('${department.name}')">
-                    <div>
-                        <h3 class="text-2xl font-bold mb-3 ${department.name === 'Caldas' ? 'text-amber-700' : department.name === 'Antioquia' || department.name === 'La Guajira' ? 'text-sky-700' : 'text-gray-900'}">
-                            ${department.name}
-                        </h3>
-                        <p class="text-sm text-gray-500 mb-4">${department.description}</p>
-                    </div>
-
-                    <!-- Estado del Café -->
-                    <div class="mb-4">
-                        <p class="text-base font-semibold text-gray-700 flex justify-between items-center mb-1">
-                            <span>☕ Coffee (Flowering)</span>
-                            <span class="font-mono text-sm">${department.coffee_status}%</span>
-                        </p>
-                        <div class="w-full bg-gray-200 rounded-full h-2.5">
-                            <div class="h-2.5 rounded-full ${coffeeColor.replace('bg-', 'bg-')}" style="width: ${department.coffee_status}%"></div>
-                        </div>
-                        <p class="text-xs mt-1">${coffeeSuitability}</p>
-                    </div>
-
-                    <!-- Estado del Plátano -->
-                    <div>
-                        <p class="text-base font-semibold text-gray-700 flex justify-between items-center mb-1">
-                            <span>🍌 plantain (Flowering)</span>
-                            <span class="font-mono text-sm">${department.plantain_status}%</span>
-                        </p>
-                        <div class="w-full bg-gray-200 rounded-full h-2.5">
-                            <div class="h-2.5 rounded-full ${plantainColor.replace('bg-', 'bg-')}" style="width: ${department.plantain_status}%"></div>
-                        </div>
-                        <p class="text-xs mt-1">${plantainSuitability}</p>
-                    </div>
-                </div>
-            `;
             }
+            console.log(`🎯 Nearest date to ${targetDate}: ${nearest}`);
+            return nearest;
+        }
 
-            // Función para actualizar el croquis SVG
-            function updateMap(currentData) {
-                currentData.forEach(dept => {
-                    const pathElement = document.getElementById(dept.id);
-                    if (pathElement) {
-                        const fillColor = getMapFillColor(dept.coffee_status, dept.plantain_status);
-                        pathElement.setAttribute('fill', fillColor);
-                    }
-                });
-            }
-
-            // Renderiza tarjetas y actualiza el mapa
-            function renderAllElements(currentData) {
-                const grid = document.getElementById('department-grid');
-                grid.innerHTML = currentData.map(renderDepartmentCard).join('');
-                updateMap(currentData); // Actualizar el croquis SVG
-            }
-
-            // --- LÓGICA DE INTERACCIÓN DEL MAPA (TOOLTIP) ---
-
-            function setupMapInteractions() {
-                const mapPaths = document.querySelectorAll('.map-path');
-
-                mapPaths.forEach(path => {
-                    // Previene interacción con el path de fondo (si existe)
-                    if (path.style.pointerEvents === 'none') return;
-
-                    // Evento Mouse Over
-                    path.addEventListener('mouseover', (e) => {
-                        const deptName = path.getAttribute('data-dept-name');
-                        const department = dataStore.find(d => d.name === deptName);
-
-                        if (department) {
-                            const tooltip = document.getElementById('map-tooltip');
-                            const tooltipName = document.getElementById('tooltip-dept-name');
-                            const tooltipContent = document.getElementById('tooltip-content');
-
-                            tooltipName.textContent = deptName;
-
-                            // Reemplazar clases de Tailwind para mostrar el color correcto en el tooltip
-                            const coffeeStatusColor = getStatusColor(department.coffee_status).replace('bg-', 'text-');
-                            const plantainStatusColor = getStatusColor(department.plantain_status).replace('bg-', 'text-');
-
-                            tooltipContent.innerHTML = `
-                            <p class="text-xs mt-1">Simulación: ${document.getElementById('simulation-date').value}</p>
-                            <p class="mt-2">☕ Café: <span class="${coffeeStatusColor} font-bold">${department.coffee_status}%</span></p>
-                            <p class="mt-1">🍌 Plátano: <span class="${plantainStatusColor} font-bold">${department.plantain_status}%</span></p>
-                            <p class="text-xs mt-2 font-light italic">Click to view full details.</p>
-                        `;
-
-                            // Mostrar y configurar el seguimiento del cursor
-                            document.addEventListener('mousemove', followCursor);
-                            tooltip.classList.remove('hidden');
-
-                            // Resaltar el path
-                            path.style.opacity = 1.0;
-                        }
-                    });
-
-                    // Evento Mouse Out
-                    path.addEventListener('mouseout', (e) => {
-                        const tooltip = document.getElementById('map-tooltip');
-                        tooltip.classList.add('hidden');
-                        document.removeEventListener('mousemove', followCursor);
-
-                        // Restaurar opacidad del path
-                        e.target.style.opacity = 0.85; // Opacidad por defecto en el CSS hover
-                    });
-
-                    // Evento Click
-                    path.addEventListener('click', () => {
-                        const deptName = path.getAttribute('data-dept-name');
-                        showDepartmentDetail(deptName);
-                    });
-                });
-            }
-
-            // Sigue el cursor para el tooltip
-            const followCursor = (e) => {
-                const tooltip = document.getElementById('map-tooltip');
-                const x = e.clientX + 10;
-                const y = e.clientY + 10;
-                tooltip.style.left = `${x}px`;
-                tooltip.style.top = `${y}px`;
-            };
-
-            // --- LÓGICA DE INICIALIZACIÓN Y CONSULTA ---
-
-            function initializeApp() {
-                const select = document.getElementById('department-select');
-                const dateInput = document.getElementById('simulation-date');
-
-                // Establecer la fecha predeterminada a hoy
-                const today = new Date().toISOString().split('T')[0];
-                dateInput.value = today;
-
-                // Llenar el dropdown
-                dataStore.forEach(dept => {
+        function updateDepartmentSelector() {
+            const select = document.getElementById('department-select');
+            select.innerHTML = '<option value="" disabled selected>Select a Department</option>';
+            currentDataStore
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .forEach(dept => {
                     const option = document.createElement('option');
                     option.value = dept.name;
                     option.textContent = dept.name;
                     select.appendChild(option);
                 });
+        }
 
-                // Iniciar la simulación y configurar interacciones del mapa SVG
-                runSimulation();
-                setupMapInteractions();
+        function getStatusColor(status) {
+            if (status >= 90) return 'bg-green-700';
+            if (status >= OPTIMAL_THRESHOLD) return 'bg-green-500';
+            if (status >= 60) return 'bg-yellow-500';
+            return 'bg-red-500';
+        }
+
+        function getMapFillColor(coffeeStatus, plantainStatus) {
+            const avg = (coffeeStatus + plantainStatus) / 2;
+            if (avg >= 90) return '#065f46';
+            if (avg >= OPTIMAL_THRESHOLD) return '#10b981';
+            if (avg >= 60) return '#f59e0b';
+            return '#ef4444';
+        }
+
+        function getSuitabilityMessage(status) {
+            if (status >= OPTIMAL_THRESHOLD) {
+                return '<span class="text-green-700 font-semibold">Optimal</span> (Ready for Collection/Planting)';
+            } else if (status >= 60) {
+                return '<span class="text-yellow-700 font-semibold">Moderate</span> (Monitoring Required)';
+            } else {
+                return '<span class="text-red-700 font-semibold">Low</span> (Unfavorable Conditions)';
+            }
+        }
+
+        function renderDepartmentCard(department) {
+            let highlightClass = '';
+            if (department.coffee_status >= 90 || department.plantain_status >= 90) {
+                highlightClass = 'border-2 border-green-500 shadow-xl';
+            }
+            const coffeeColor = getStatusColor(department.coffee_status);
+            const coffeeSuitability = getSuitabilityMessage(department.coffee_status);
+            const plantainColor = getStatusColor(department.plantain_status);
+            const plantainSuitability = getSuitabilityMessage(department.plantain_status);
+
+            return `
+            <div class="department-card bg-white p-6 rounded-xl shadow-lg ${highlightClass} flex flex-col justify-between" onclick="showDepartmentDetail('${department.name}')">
+                <div>
+                    <h3 class="text-2xl font-bold mb-3 text-gray-900">${department.name}</h3>
+                    <p class="text-xs text-gray-400 mb-3">Lat: ${department.lat?.toFixed(4) || 'N/A'}, Lon: ${department.lon?.toFixed(4) || 'N/A'}</p>
+                </div>
+                <div class="mb-4">
+                    <p class="text-base font-semibold text-gray-700 flex justify-between items-center mb-1">
+                        <span>☕ Coffee (Flowering)</span>
+                        <span class="font-mono text-sm">${department.coffee_status}%</span>
+                    </p>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div class="h-2.5 rounded-full ${coffeeColor}" style="width: ${department.coffee_status}%"></div>
+                    </div>
+                    <p class="text-xs mt-1">${coffeeSuitability}</p>
+                </div>
+                <div>
+                    <p class="text-base font-semibold text-gray-700 flex justify-between items-center mb-1">
+                        <span>🍌 Plantain (Flowering)</span>
+                        <span class="font-mono text-sm">${department.plantain_status}%</span>
+                    </p>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div class="h-2.5 rounded-full ${plantainColor}" style="width: ${department.plantain_status}%"></div>
+                    </div>
+                    <p class="text-xs mt-1">${plantainSuitability}</p>
+                </div>
+            </div>
+            `;
+        }
+
+        // NUEVO: Actualizar mapa usando API de Simplemaps
+        function updateMap(currentData) {
+            console.log('🗺️ Updating Simplemaps with data...');
+            
+            if (!currentData || currentData.length === 0) {
+                console.warn('⚠️ No data to update map');
+                return;
             }
 
-            function showDepartmentDetail(departmentName) {
-                const department = dataStore.find(d => d.name === departmentName);
-                const resultDiv = document.getElementById('consultation-result');
-                const contentDiv = document.getElementById('result-content');
+            // Verificar que Simplemaps esté cargado
+            if (typeof simplemaps_countrymap === 'undefined') {
+                console.error('❌ Simplemaps not loaded yet');
+                return;
+            }
 
-                if (!department) {
-                    contentDiv.innerHTML = '<span class="text-red-600">Error: Department not found.</span>';
-                    resultDiv.classList.remove('hidden');
-                    return;
-                }
+            // Inspeccionar la estructura de Simplemaps
+            console.log('Simplemaps object:', simplemaps_countrymap);
+            console.log('Available methods:', Object.keys(simplemaps_countrymap));
 
-                const coffeeSuitability = getSuitabilityMessage(department.coffee_status);
-                const plantainSuitability = getSuitabilityMessage(department.plantain_status);
-
-                let overallMessage = '';
-                if (department.coffee_status >= OPTIMAL_THRESHOLD && department.plantain_status >= OPTIMAL_THRESHOLD) {
-                    overallMessage = '<p class="text-lg font-bold text-green-700 mt-3">¡Excelente! Ambos cultivos están en una etapa óptima de floración/cosecha.</p>';
-                } else if (department.coffee_status >= OPTIMAL_THRESHOLD) {
-                    overallMessage = '<p class="text-lg font-bold text-amber-700 mt-3">The coffee is at its peak! Focus on coffee harvesting.</p>';
-                } else if (department.plantain_status >= OPTIMAL_THRESHOLD) {
-                    overallMessage = '<p class="text-lg font-bold text-sky-700 mt-3">¡The plantain is at its peak! Focus on plantain harvesting.</p>';
-                } else {
-                    overallMessage = '<p class="text-lg font-bold text-red-700 mt-3">It is recommended to wait. Neither crop is in optimal condition according to the simulation.</p>';
-                }
-
-                contentDiv.innerHTML = `
-                <h4 class="text-xl font-bold mb-3">${department.name}</h4>
-                <p class="mb-2"><strong>Simulation Description:</strong> ${department.description}</p>
+            try {
+                let successCount = 0;
+                let failedCount = 0;
                 
-                <div class="bg-blue-100 p-3 rounded-lg mt-3">
-                    <p class="font-semibold text-gray-800 mb-1">Coffee Blooming: ${department.coffee_status}%</p>
-                    <p class="text-sm">${coffeeSuitability}</p>
+                // Mapa de conversión
+                const nameToCode = {
+                    'AMAZONAS': 'COAMA',
+                    'ANTIOQUIA': 'COANT',
+                    'ARAUCA': 'COARA',
+                    'ATLANTICO': 'COATL',
+                    'BOLIVAR': 'COBOL',
+                    'BOYACA': 'COBOY',
+                    'CALDAS': 'COCAL',
+                    'CAQUETA': 'COCAQ',
+                    'CASANARE': 'COCAS',
+                    'CAUCA': 'COCAU',
+                    'CESAR': 'COCES',
+                    'CHOCO': 'COCHO',
+                    'CORDOBA': 'COCOR',
+                    'CUNDINAMARCA': 'COCUN',
+                    'GUAINIA': 'COGUA',
+                    'GUAVIARE': 'COGUV',
+                    'HUILA': 'COHUI',
+                    'LA GUAJIRA': 'COLAG',
+                    'MAGDALENA': 'COMAG',
+                    'META': 'COMET',
+                    'NARIÑO': 'CONAR',
+                    'NORTE DE SANTANDER': 'CONSA',
+                    'PUTUMAYO': 'COPUT',
+                    'QUINDIO': 'COQUI',
+                    'RISARALDA': 'CORIS',
+                    'SANTANDER': 'COSAN',
+                    'SAN ANDRES Y PROVIDENCIA': 'COSAP',
+                    'SUCRE': 'COSUC',
+                    'TOLIMA': 'COTOL',
+                    'VALLE DEL CAUCA': 'COVAC',
+                    'VAUPES': 'COVAU',
+                    'VICHADA': 'COVID'
+                };
+                
+                // Actualizar cada departamento
+                currentData.forEach(dept => {
+                    let stateId = dept.id.replace('path-', '').toUpperCase();
+                    if (nameToCode[stateId]) {
+                        stateId = nameToCode[stateId];
+                    }
                     
-                    <p class="font-semibold text-gray-800 mt-3 mb-1">plantain Bloom: ${department.plantain_status}%</p>
+                    const color = getMapFillColor(dept.coffee_status, dept.plantain_status);
+                    const description = `☕ Café: ${dept.coffee_status}%\n\n🍌 Plátano: ${dept.plantain_status}%\n\nClick for details`;
+                    
+                    // Intentar usar el método set_state() de Simplemaps
+                    if (typeof simplemaps_countrymap.set_state === 'function') {
+                        simplemaps_countrymap.set_state(stateId, {
+                            color: color,
+                            description: description,
+                            hover_color: color
+                        });
+                        successCount++;
+                        console.log(`   ✅ ${dept.name} -> ${stateId}`);
+                    } else {
+                        // Fallback: modificar directamente el mapdata
+                        if (simplemaps_countrymap_mapdata && 
+                            simplemaps_countrymap_mapdata.state_specific && 
+                            simplemaps_countrymap_mapdata.state_specific[stateId]) {
+                            
+                            simplemaps_countrymap_mapdata.state_specific[stateId].color = color;
+                            simplemaps_countrymap_mapdata.state_specific[stateId].description = description;
+                            simplemaps_countrymap_mapdata.state_specific[stateId].hover_color = color;
+                            successCount++;
+                            console.log(`   ✅ ${dept.name} -> ${stateId} (direct)`);
+                        } else {
+                            failedCount++;
+                            console.warn(`   ❌ Cannot update: ${stateId} (from ${dept.id})`);
+                        }
+                    }
+                });
+
+                // Refrescar el mapa
+                if (typeof simplemaps_countrymap.refresh === 'function') {
+                    simplemaps_countrymap.refresh();
+                } else if (typeof simplemaps_countrymap.load === 'function') {
+                    simplemaps_countrymap.load();
+                }
+                
+                console.log(`✅ Updated ${successCount} departments, ${failedCount} failed`);
+            } catch (error) {
+                console.error('❌ Error updating map:', error);
+                console.error('Error details:', error.stack);
+            }
+        }
+
+        function renderAllElements(currentData) {
+            const grid = document.getElementById('department-grid');
+            if (!currentData || currentData.length === 0) {
+                grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-8">No data available. Please load dataStore.json file.</div>';
+            } else {
+                console.log('🎨 Rendering', currentData.length, 'departments');
+                grid.innerHTML = currentData.map(renderDepartmentCard).join('');
+                updateMap(currentData);
+            }
+        }
+
+        function showDepartmentDetail(departmentName) {
+            const department = currentDataStore.find(d => d.name === departmentName);
+            const resultDiv = document.getElementById('consultation-result');
+            const contentDiv = document.getElementById('result-content');
+
+            if (!department) {
+                contentDiv.innerHTML = '<span class="text-red-600">Error: Department not found for this date.</span>';
+                resultDiv.classList.remove('hidden');
+                return;
+            }
+
+            const coffeeSuitability = getSuitabilityMessage(department.coffee_status);
+            const plantainSuitability = getSuitabilityMessage(department.plantain_status);
+
+            let overallMessage = '';
+            if (department.coffee_status >= OPTIMAL_THRESHOLD && department.plantain_status >= OPTIMAL_THRESHOLD) {
+                overallMessage = '<p class="text-lg font-bold text-green-700 mt-3">¡Excellent! Both crops are at optimal flowering stage.</p>';
+            } else if (department.coffee_status >= OPTIMAL_THRESHOLD) {
+                overallMessage = '<p class="text-lg font-bold text-amber-700 mt-3">Coffee is at its peak! Focus on coffee harvesting.</p>';
+            } else if (department.plantain_status >= OPTIMAL_THRESHOLD) {
+                overallMessage = '<p class="text-lg font-bold text-sky-700 mt-3">Plantain is at its peak! Focus on plantain harvesting.</p>';
+            } else {
+                overallMessage = '<p class="text-lg font-bold text-red-700 mt-3">Wait recommended. Neither crop is in optimal condition.</p>';
+            }
+
+            contentDiv.innerHTML = `
+                <h4 class="text-xl font-bold mb-3">${department.name}</h4>
+                <p class="text-xs text-gray-500 mb-3">Coordinates: ${department.lat?.toFixed(4) || 'N/A'}, ${department.lon?.toFixed(4) || 'N/A'}</p>
+                <div class="bg-blue-100 p-3 rounded-lg mt-3">
+                    <p class="font-semibold text-gray-800 mb-1">Coffee Flowering: ${department.coffee_status}%</p>
+                    <p class="text-sm">${coffeeSuitability}</p>
+                    <p class="font-semibold text-gray-800 mt-3 mb-1">Plantain Flowering: ${department.plantain_status}%</p>
                     <p class="text-sm">${plantainSuitability}</p>
                 </div>
                 ${overallMessage}
             `;
 
+            resultDiv.classList.remove('hidden');
+            resultDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function displaySelectedDepartment() {
+            const select = document.getElementById('department-select');
+            const selectedName = select.value;
+            if (selectedName) {
+                showDepartmentDetail(selectedName);
+            } else {
+                const resultDiv = document.getElementById('consultation-result');
+                const contentDiv = document.getElementById('result-content');
+                contentDiv.innerHTML = '<span class="text-red-600 font-semibold">Please select a department.</span>';
                 resultDiv.classList.remove('hidden');
-                resultDiv.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        async function initializeApp() {
+            const dateInput = document.getElementById('simulation-date');
+            console.log('🚀 Initializing app...');
+            
+            // Cargar datos JSON
+            let success = loadJSONFromString();
+            if (!success) {
+                success = await loadJSONData();
             }
 
-            function displaySelectedDepartment() {
-                const select = document.getElementById('department-select');
-                const selectedName = select.value;
-                if (selectedName) {
-                    showDepartmentDetail(selectedName);
-                } else {
-                    const resultDiv = document.getElementById('consultation-result');
-                    const contentDiv = document.getElementById('result-content');
-                    contentDiv.innerHTML = '<span class="text-red-600 font-semibold">Please select a department from the list.</span>';
-                    resultDiv.classList.remove('hidden');
+            if (!success || availableDates.length === 0) {
+                console.error('❌ Failed to initialize: No data available');
+                document.getElementById('date-info').textContent = '❌ Failed to load data. Check console for details.';
+                document.getElementById('date-info').classList.add('text-red-500');
+                return;
+            }
+
+            // Configurar fecha
+            const mostRecentDate = availableDates[availableDates.length - 1];
+            dateInput.value = mostRecentDate;
+            dateInput.min = availableDates[0];
+            dateInput.max = mostRecentDate;
+            console.log(`✅ App initialized with date range: ${availableDates[0]} to ${mostRecentDate}`);
+
+            // Esperar a que Simplemaps se cargue
+            const checkSimpleMaps = setInterval(() => {
+                if (typeof simplemaps_countrymap !== 'undefined') {
+                    console.log('✅ Simplemaps loaded successfully');
+                    simplemapsReady = true;
+                    clearInterval(checkSimpleMaps);
+                    loadDataForDate();
                 }
-            }
+            }, 100);
 
-        </script>
+            // Timeout después de 5 segundos
+            setTimeout(() => {
+                if (!simplemapsReady) {
+                    clearInterval(checkSimpleMaps);
+                    console.error('❌ Simplemaps failed to load');
+                    document.getElementById('map').innerHTML = '<div class="text-center py-12 text-red-600">Map files (mapdata.js, countrymap.js) not found or failed to load.</div>';
+                    // Aún así cargar los datos para mostrar las tarjetas
+                    loadDataForDate();
+                }
+            }, 5000);
+        }
+
+        window.onload = initializeApp;
+    </script>
+
+    <!-- Cargar Simplemaps AL FINAL -->
+    <script src="mapdata.js"></script>
+    <script src="countrymap.js"></script>
 </body>
-
 </html>
