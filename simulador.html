@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flowering and Cultivation Simulator</title>
+    <!-- Carga de Tailwind CSS CDN para un estilo moderno y responsivo -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="mapdata.js"></script>
+    <script src="countrymap.js"></script>
+
+    <!-- Configuración de fuente Inter y estilos específicos -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+        }
+
+        .department-card {
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+
+        .department-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Estilos del mapa SVG (Croquis) */
+        .map-path {
+            stroke: #ffffff;
+            stroke-width: 1px;
+            transition: fill 0.3s, opacity 0.1s;
+            cursor: pointer;
+        }
+
+        .map-path:hover {
+            opacity: 0.85;
+            stroke-width: 3px;
+            /* Efecto de resaltado al pasar el mouse */
+        }
+
+        #map-tooltip {
+            pointer-events: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+
+<body onload="initializeApp()">
+
+    <div id="app" class="min-h-screen p-4 sm:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-green-800 mb-2">Flowering and Cultivation Simulator</h1>
+            <p class="text-xl text-gray-600">Flowering Validation for Coffee and Plantain</p>
+            <p class="mt-4 text-sm text-gray-500">
+                *Simulated Data. Flowering > 75% = Optimal for Planting/HarvestS.
+            </p>
+        </header>
+
+        <!-- Tooltip para el mapa (se controla con JS) -->
+        <div id="map-tooltip" class="fixed hidden bg-gray-900 text-white p-3 rounded-lg shadow-xl text-sm max-w-xs">
+            <h4 id="tooltip-dept-name" class="font-bold mb-1"></h4>
+            <div id="tooltip-content"></div>
+        </div>
+
+        <!-- Controles de Interacción y Simulación Estacional -->
+        <div class="max-w-6xl mx-auto bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Simulation and Query</h2>
+            <div class="flex flex-col md:flex-row gap-4 items-center">
+
+                <!-- Selector de Fecha/Estación -->
+                <div class="w-full md:w-1/2">
+                    <label for="simulation-date" class="block text-sm font-medium text-gray-700 mb-1">Date of
+                        simulation:</label>
+                    <input type="date" id="simulation-date" onchange="runSimulation()"
+                        class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-700 bg-gray-50 h-11">
+                </div>
+
+                <!-- Selector de Departamento (Original) -->
+                <div class="w-full md:w-1/2 flex gap-4 items-center self-end">
+                    <select id="department-select"
+                        class="flex-grow p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-700 bg-gray-50">
+                        <option value="" disabled selected>Select a Department</option>
+                    </select>
+                    <button onclick="displaySelectedDepartment()"
+                        class="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition duration-150 shadow-md">
+                        View Prediction
+                    </button>
+                </div>
+            </div>
+
+            <!-- Resultado de la Consulta -->
+            <div id="consultation-result" class="mt-6 p-4 border border-blue-200 bg-blue-50 rounded-lg hidden">
+                <p class="font-semibold text-blue-700">Query Result:</p>
+                <div id="result-content" class="text-sm mt-2 text-blue-800"></div>
+            </div>
+        </div>
+
+        <!-- Mapeo Interactivo Croquis SVG -->
+        <main class="max-w-6xl mx-auto mb-10">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Interactive Flowering Sketch</h2>
+            <div id="map"></div>
+    </div>
+
+    <!-- Leyenda del Mapa -->
+    <div class="mt-4 flex justify-center space-x-6 text-sm">
+        <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-green-700 mr-2"></span>Optimal Total (>90)
+        </div>
+        <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-green-500 mr-2"></span>Favorable (>75)</div>
+        <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-yellow-500 mr-2"></span>Moderate (60-75)
+        </div>
+        <div class="flex items-center"><span class="w-4 h-4 rounded-full bg-red-500 mr-2"></span>Low (<60)
+        </div>
+        </div>
+        </main>
+
+        <!-- Tarjetas de Detalle de Departamentos -->
+        <div class="max-w-6xl mx-auto">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4 border-b pb-2">Detailed Department Report</h2>
+
+            <div id="department-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Las tarjetas se insertarán y actualizarán aquí por JavaScript -->
+            </div>
+            </main>
+        </div>
+
+        <script type="text/javascript">
+            // --- DATOS BASE SIMULADOS ---
+            // Se añade 'base_...' para aplicar factores de simulación estacional
+            let dataStore = [
+                { id: 'path-Caldas', name: 'Caldas', base_coffee_status: 92, base_plantain_status: 65, focus: 'Café', description: 'Main coffee-growing region. The climate and altitude are optimal for coffee flowering.' },
+                { id: 'path-Antioquia', name: 'Antioquia', base_coffee_status: 78, base_plantain_status: 90, focus: 'Plátano', description: 'Great producer of plantains and plantains. The simulation indicates an advanced and favorable flowering stage.' },
+                { id: 'path-LaGuajira', name: 'La Guajira', base_coffee_status: 45, base_plantain_status: 88, focus: 'Plátano', description: 'Region suitable for plantain cultivation, especially in irrigated areas.' },
+                { id: 'path-Cundinamarca', name: 'Cundinamarca', base_coffee_status: 85, base_plantain_status: 72, focus: 'General', description: 'Favorable conditions for both, but monitoring is recommended for the plantain.' },
+                { id: 'path-Choco', name: 'Chocó', base_coffee_status: 55, base_plantain_status: 50, focus: 'General', description: 'High rainfall can hinder flowering. Assess drainage and light conditions.' },
+                { id: 'path-ValleDelCauca', name: 'Valle del Cauca', base_coffee_status: 80, base_plantain_status: 83, focus: 'General', description: 'Region with high potential and optimal conditions for both crops in different areas.' },
+                { id: 'path-Santander', name: 'Santander', base_coffee_status: 88, base_plantain_status: 60, focus: 'Café', description: 'Strong coffee potential. The plantain flowering is in the early stage.' },
+            ];
+            // Se usa 75% como umbral para 'Óptimo'
+            const OPTIMAL_THRESHOLD = 75;
+
+            // --- FUNCIONES DE ESTADO Y COLOR ---
+
+            function getStatusColor(status) {
+                if (status >= 90) return 'bg-green-700';
+                if (status >= OPTIMAL_THRESHOLD) return 'bg-green-500';
+                if (status >= 60) return 'bg-yellow-500';
+                return 'bg-red-500';
+            }
+
+            function getMapFillColor(coffeeStatus, plantainStatus) {
+                // El color del mapa se basa en el promedio de floración de los dos cultivos.
+                const avg = (coffeeStatus + plantainStatus) / 2;
+                if (avg >= 90) return '#065f46'; // green-700
+                if (avg >= OPTIMAL_THRESHOLD) return '#10b981'; // green-500
+                if (avg >= 60) return '#f59e0b'; // yellow-500
+                return '#ef4444'; // red-500
+            }
+
+            function getSuitabilityMessage(status) {
+                if (status >= OPTIMAL_THRESHOLD) {
+                    return '<span class="text-green-700 font-semibold">Optimal</span> (Possible Collection/Planting)';
+                } else if (status >= 60) {
+                    return '<span class="text-yellow-700 font-semibold">Moderate</span> (Monitoring Required)';
+                } else {
+                    return '<span class="text-red-700 font-semibold">Low</span> (Unfavorable Conditions)';
+                }
+            }
+
+            // --- LÓGICA DE SIMULACIÓN ESTACIONAL ---
+
+            function runSimulation() {
+                const dateInput = document.getElementById('simulation-date');
+                const date = new Date(dateInput.value + 'T00:00:00');
+                const month = date.getMonth();
+
+                if (isNaN(date)) return;
+
+                let coffeeFactor = 1.0;
+                let plantainFactor = 1.0;
+
+                // Focos de floración simulados (Meses 0=Enero, 11=Diciembre)
+                // Café: Abr-May (3-4) y Sep-Nov (8-10) son picos
+                if (month >= 3 && month <= 4) { coffeeFactor = 1.15; }
+                else if (month >= 8 && month <= 10) { coffeeFactor = 1.1; }
+                else if (month === 0 || month === 1 || month === 11) { coffeeFactor = 0.85; }
+
+                // Plátano: Menos estacional, pero mejor en Jun-Ago (5-7)
+                if (month >= 5 && month <= 7) { plantainFactor = 1.1; }
+                else if (month === 10 || month === 11 || month === 0) { plantainFactor = 0.9; }
+
+                // Aplicar factores y actualizar dataStore
+                dataStore = dataStore.map(dept => {
+                    const randomOffset = Math.random() * 5 - 2.5;
+
+                    const newCoffeeStatus = Math.min(100, Math.max(20, Math.round(dept.base_coffee_status * coffeeFactor + randomOffset)));
+                    const newPlantainStatus = Math.min(100, Math.max(20, Math.round(dept.base_plantain_status * plantainFactor + randomOffset)));
+
+                    // Actualizar los datos del departamento
+                    dept.coffee_status = newCoffeeStatus;
+                    dept.plantain_status = newPlantainStatus;
+
+                    return dept;
+                });
+
+                // Re-renderizar la UI (tarjetas) y el croquis
+                renderAllElements(dataStore);
+            }
+
+
+            // --- FUNCIONES DE RENDERIZADO DE UI Y MAPA ---
+
+            function renderDepartmentCard(department) {
+                // Estilos para destacar las regiones clave
+                let highlightClass = '';
+                if (department.name === 'Caldas') {
+                    highlightClass = 'border-4 border-amber-500 shadow-xl ring-4 ring-amber-200'; // Destaca para Café
+                } else if (department.name === 'Antioquia' || department.name === 'La Guajira') {
+                    highlightClass = 'border-4 border-sky-500 shadow-xl ring-4 ring-sky-200'; // Destaca para Plátano
+                }
+
+                // Barra de progreso y mensajes
+                const coffeeColor = getStatusColor(department.coffee_status);
+                const coffeeSuitability = getSuitabilityMessage(department.coffee_status);
+                const plantainColor = getStatusColor(department.plantain_status);
+                const plantainSuitability = getSuitabilityMessage(department.plantain_status);
+
+                return `
+                <div class="department-card bg-white p-6 rounded-xl shadow-lg ${highlightClass} flex flex-col justify-between" onclick="showDepartmentDetail('${department.name}')">
+                    <div>
+                        <h3 class="text-2xl font-bold mb-3 ${department.name === 'Caldas' ? 'text-amber-700' : department.name === 'Antioquia' || department.name === 'La Guajira' ? 'text-sky-700' : 'text-gray-900'}">
+                            ${department.name}
+                        </h3>
+                        <p class="text-sm text-gray-500 mb-4">${department.description}</p>
+                    </div>
+
+                    <!-- Estado del Café -->
+                    <div class="mb-4">
+                        <p class="text-base font-semibold text-gray-700 flex justify-between items-center mb-1">
+                            <span>☕ Coffee (Flowering)</span>
+                            <span class="font-mono text-sm">${department.coffee_status}%</span>
+                        </p>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div class="h-2.5 rounded-full ${coffeeColor.replace('bg-', 'bg-')}" style="width: ${department.coffee_status}%"></div>
+                        </div>
+                        <p class="text-xs mt-1">${coffeeSuitability}</p>
+                    </div>
+
+                    <!-- Estado del Plátano -->
+                    <div>
+                        <p class="text-base font-semibold text-gray-700 flex justify-between items-center mb-1">
+                            <span>🍌 plantain (Flowering)</span>
+                            <span class="font-mono text-sm">${department.plantain_status}%</span>
+                        </p>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div class="h-2.5 rounded-full ${plantainColor.replace('bg-', 'bg-')}" style="width: ${department.plantain_status}%"></div>
+                        </div>
+                        <p class="text-xs mt-1">${plantainSuitability}</p>
+                    </div>
+                </div>
+            `;
+            }
+
+            // Función para actualizar el croquis SVG
+            function updateMap(currentData) {
+                currentData.forEach(dept => {
+                    const pathElement = document.getElementById(dept.id);
+                    if (pathElement) {
+                        const fillColor = getMapFillColor(dept.coffee_status, dept.plantain_status);
+                        pathElement.setAttribute('fill', fillColor);
+                    }
+                });
+            }
+
+            // Renderiza tarjetas y actualiza el mapa
+            function renderAllElements(currentData) {
+                const grid = document.getElementById('department-grid');
+                grid.innerHTML = currentData.map(renderDepartmentCard).join('');
+                updateMap(currentData); // Actualizar el croquis SVG
+            }
+
+            // --- LÓGICA DE INTERACCIÓN DEL MAPA (TOOLTIP) ---
+
+            function setupMapInteractions() {
+                const mapPaths = document.querySelectorAll('.map-path');
+
+                mapPaths.forEach(path => {
+                    // Previene interacción con el path de fondo (si existe)
+                    if (path.style.pointerEvents === 'none') return;
+
+                    // Evento Mouse Over
+                    path.addEventListener('mouseover', (e) => {
+                        const deptName = path.getAttribute('data-dept-name');
+                        const department = dataStore.find(d => d.name === deptName);
+
+                        if (department) {
+                            const tooltip = document.getElementById('map-tooltip');
+                            const tooltipName = document.getElementById('tooltip-dept-name');
+                            const tooltipContent = document.getElementById('tooltip-content');
+
+                            tooltipName.textContent = deptName;
+
+                            // Reemplazar clases de Tailwind para mostrar el color correcto en el tooltip
+                            const coffeeStatusColor = getStatusColor(department.coffee_status).replace('bg-', 'text-');
+                            const plantainStatusColor = getStatusColor(department.plantain_status).replace('bg-', 'text-');
+
+                            tooltipContent.innerHTML = `
+                            <p class="text-xs mt-1">Simulación: ${document.getElementById('simulation-date').value}</p>
+                            <p class="mt-2">☕ Café: <span class="${coffeeStatusColor} font-bold">${department.coffee_status}%</span></p>
+                            <p class="mt-1">🍌 Plátano: <span class="${plantainStatusColor} font-bold">${department.plantain_status}%</span></p>
+                            <p class="text-xs mt-2 font-light italic">Click to view full details.</p>
+                        `;
+
+                            // Mostrar y configurar el seguimiento del cursor
+                            document.addEventListener('mousemove', followCursor);
+                            tooltip.classList.remove('hidden');
+
+                            // Resaltar el path
+                            path.style.opacity = 1.0;
+                        }
+                    });
+
+                    // Evento Mouse Out
+                    path.addEventListener('mouseout', (e) => {
+                        const tooltip = document.getElementById('map-tooltip');
+                        tooltip.classList.add('hidden');
+                        document.removeEventListener('mousemove', followCursor);
+
+                        // Restaurar opacidad del path
+                        e.target.style.opacity = 0.85; // Opacidad por defecto en el CSS hover
+                    });
+
+                    // Evento Click
+                    path.addEventListener('click', () => {
+                        const deptName = path.getAttribute('data-dept-name');
+                        showDepartmentDetail(deptName);
+                    });
+                });
+            }
+
+            // Sigue el cursor para el tooltip
+            const followCursor = (e) => {
+                const tooltip = document.getElementById('map-tooltip');
+                const x = e.clientX + 10;
+                const y = e.clientY + 10;
+                tooltip.style.left = `${x}px`;
+                tooltip.style.top = `${y}px`;
+            };
+
+            // --- LÓGICA DE INICIALIZACIÓN Y CONSULTA ---
+
+            function initializeApp() {
+                const select = document.getElementById('department-select');
+                const dateInput = document.getElementById('simulation-date');
+
+                // Establecer la fecha predeterminada a hoy
+                const today = new Date().toISOString().split('T')[0];
+                dateInput.value = today;
+
+                // Llenar el dropdown
+                dataStore.forEach(dept => {
+                    const option = document.createElement('option');
+                    option.value = dept.name;
+                    option.textContent = dept.name;
+                    select.appendChild(option);
+                });
+
+                // Iniciar la simulación y configurar interacciones del mapa SVG
+                runSimulation();
+                setupMapInteractions();
+            }
+
+            function showDepartmentDetail(departmentName) {
+                const department = dataStore.find(d => d.name === departmentName);
+                const resultDiv = document.getElementById('consultation-result');
+                const contentDiv = document.getElementById('result-content');
+
+                if (!department) {
+                    contentDiv.innerHTML = '<span class="text-red-600">Error: Department not found.</span>';
+                    resultDiv.classList.remove('hidden');
+                    return;
+                }
+
+                const coffeeSuitability = getSuitabilityMessage(department.coffee_status);
+                const plantainSuitability = getSuitabilityMessage(department.plantain_status);
+
+                let overallMessage = '';
+                if (department.coffee_status >= OPTIMAL_THRESHOLD && department.plantain_status >= OPTIMAL_THRESHOLD) {
+                    overallMessage = '<p class="text-lg font-bold text-green-700 mt-3">¡Excelente! Ambos cultivos están en una etapa óptima de floración/cosecha.</p>';
+                } else if (department.coffee_status >= OPTIMAL_THRESHOLD) {
+                    overallMessage = '<p class="text-lg font-bold text-amber-700 mt-3">The coffee is at its peak! Focus on coffee harvesting.</p>';
+                } else if (department.plantain_status >= OPTIMAL_THRESHOLD) {
+                    overallMessage = '<p class="text-lg font-bold text-sky-700 mt-3">¡The plantain is at its peak! Focus on plantain harvesting.</p>';
+                } else {
+                    overallMessage = '<p class="text-lg font-bold text-red-700 mt-3">It is recommended to wait. Neither crop is in optimal condition according to the simulation.</p>';
+                }
+
+                contentDiv.innerHTML = `
+                <h4 class="text-xl font-bold mb-3">${department.name}</h4>
+                <p class="mb-2"><strong>Simulation Description:</strong> ${department.description}</p>
+                
+                <div class="bg-blue-100 p-3 rounded-lg mt-3">
+                    <p class="font-semibold text-gray-800 mb-1">Coffee Blooming: ${department.coffee_status}%</p>
+                    <p class="text-sm">${coffeeSuitability}</p>
+                    
+                    <p class="font-semibold text-gray-800 mt-3 mb-1">plantain Bloom: ${department.plantain_status}%</p>
+                    <p class="text-sm">${plantainSuitability}</p>
+                </div>
+                ${overallMessage}
+            `;
+
+                resultDiv.classList.remove('hidden');
+                resultDiv.scrollIntoView({ behavior: 'smooth' });
+            }
+
+            function displaySelectedDepartment() {
+                const select = document.getElementById('department-select');
+                const selectedName = select.value;
+                if (selectedName) {
+                    showDepartmentDetail(selectedName);
+                } else {
+                    const resultDiv = document.getElementById('consultation-result');
+                    const contentDiv = document.getElementById('result-content');
+                    contentDiv.innerHTML = '<span class="text-red-600 font-semibold">Please select a department from the list.</span>';
+                    resultDiv.classList.remove('hidden');
+                }
+            }
+
+        </script>
+</body>
+
+</html>
